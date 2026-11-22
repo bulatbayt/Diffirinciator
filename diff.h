@@ -7,6 +7,10 @@
 #include <ctype.h>
 #include <assert.h>
 #include <sys/stat.h>
+#include <math.h>
+
+
+
 
 enum NodeType
 {
@@ -46,6 +50,8 @@ struct Node
 
 void                  Input                   (char** buffer, struct Node** manual_formula, struct Node** formula);
 
+
+
 struct Node           *New_Node(int type, double val, struct Node *left, struct Node *right);
 struct Node*          Copy_Tree               (const struct Node* node);
 void                  Tree_Destroy            (struct Node* node);
@@ -53,6 +59,10 @@ void                  Tree_Destroy            (struct Node* node);
 int                   ReadFromFile            (const char* name_file, char** buffer);
 struct Node*          Load_Tree_From_Buffer   (char** ptr);
 struct Node*          Parse_Elem_To_Node      (const char* elem_str);
+
+int                   Is_Zero                 (const struct Node* node);
+int                   Is_One                  (const struct Node* node);
+struct Node*          Simplify_Tree           (struct Node* node);
 
 double                Count_Tree               (const struct Node* node, double x_val, double y_val);
 struct Node*          Diff                    (const struct Node* node, char var_name);
