@@ -2,48 +2,57 @@
 
 int main ()
 {
-    struct Node* manual_expr = _DIV (_ADD (_NUM (2), _VAR ('x')), _SUB (_NUM (5), _VAR ('y')));
+    struct Node* manual_formula = _DIV (_ADD (_NUM (2), _VAR ('x')), _SUB (_NUM (5), _VAR ('y')));
 
     char* buffer      = NULL;
-    struct Node* expr = NULL;
+    struct Node* formula = NULL;
 
-    if (ReadFromFile ("expr.txt", &buffer) > 0 && buffer != NULL)
+    if (ReadFromFile ("formula.txt", &buffer) > 0 && buffer != NULL)
     {
         char* ptr = buffer;
-        expr = Load_Tree_From_Buffer (&ptr);
+        formula = Load_Tree_From_Buffer (&ptr);
         free (buffer);
     }
     else
     {
-        expr = manual_expr;
-        manual_expr = NULL;
+        formula = manual_formula;
+        manual_formula = NULL;
     }
 
-    double res = Count_Tree (expr, 3.0, 1.0);
+    double res = Count_Tree (formula, 3.0, 1.0);
     printf ("Result (x=3, y=1): %g\n", res);
 
-    struct Node* d_expr = Diff (expr, 'x');
+    struct Node* d_formula = Diff (formula, 'x');
 
-    Graph_Dump (expr, "expr.dot", "expr.png");
+    Graph_Dump (formula, "formula.dot", "formula.png");
 
     printf ("Enter to continue..........\n");
     getchar ();
 
-    Graph_Dump (d_expr, "diff.dot", "diff.png");
+    Graph_Dump (d_formula, "diff.dot", "diff.png");
 
     FILE* tex = fopen ("dump.tex", "w");
     if (tex != NULL)
     {
-        fprintf (tex, "\\documentclass{article}\n\\usepackage[utf8]{inputenc}\n\\usepackage[russian]{babel}\n\\begin{document}\n");
-        Tex_Dump (expr,   tex, "Исходное выражение:");
-        Tex_Dump (d_expr, tex, "Производная по x:");
+        fprintf (tex, "\\documentclass{article}\n"
+                    "\\usepackage{fontspec}\n"
+                    "\\setmainfont{Times New Roman}\n"
+                    "\\begin{document}\n");
+
+        Tex_Dump (formula,   tex, "Исходное выражение:");
+        Tex_Dump (d_formula, tex, "Производная по x:");
+
         fprintf (tex, "\\end{document}\n");
-        fclose (tex);
+        fclose (tex); // <--- ОБЯЗАТЕЛЬНО закрыть файл ДО запуска tectonic!
+
+        system ("tectonic dump.tex");
+        system ("start dump.pdf");
     }
 
-    Tree_Destroy (expr);
-    Tree_Destroy (d_expr);
-    Tree_Destroy (manual_expr);
+
+    Tree_Destroy (formula);
+    Tree_Destroy (d_formula);
+    Tree_Destroy (manual_formula);
 
     return 0;
 }
@@ -116,66 +125,76 @@ struct Node*          Parse_Elem_To_Node      (const char* elem_str)
     if (isalpha ((unsigned char)elem_str[0]) && elem_str[1] == '\0')
         return New_Node (VAR, (double)elem_str[0], NULL, NULL);
 
+
     printf ("Syntax error: unknown element '%s'\n", elem_str);
     return NULL;
 }
 
 struct Node*          Load_Tree_From_Buffer   (char** ptr)
 {
-    while (**ptr == ' ' || **ptr == '\n' || **ptr == '\r' || **ptr == '\t')
+    while (isspace ((unsigned char)**ptr))
         (*ptr)++;
 
     if (**ptr == '\0')
         return NULL;
 
+
     if (**ptr == '(')
     {
         (*ptr)++;
-        while (**ptr == ' ' || **ptr == '\n' || **ptr == '\r' || **ptr == '\t')
+        while (isspace ((unsigned char)**ptr))
             (*ptr)++;
+
+
+        struct Node* left = Load_Tree_From_Buffer (ptr);
+
+        while (isspace ((unsigned char)**ptr))
+            (*ptr)++;
+
 
         if (**ptr == ')')
         {
             (*ptr)++;
+            return left;
+        }
+
+    
+        char op_str[2] = { **ptr, '\0' };
+        (*ptr)++;
+
+        struct Node* op_node = Parse_Elem_To_Node (op_str);
+        if (op_node == NULL)
+        {
+            Tree_Destroy (left);
             return NULL;
         }
 
-        char elem_str[128] = { 0 };
-        int i = 0;
-        while (**ptr != '(' && **ptr != ')' && **ptr != '\0' && i < 127)
-        {
-            elem_str[i++] = **ptr;
-            (*ptr)++;
-        }
-        elem_str[i] = '\0';
 
-        while (i > 0 && isspace ((unsigned char)elem_str[i - 1]))
-            elem_str[--i] = '\0';
+        op_node->left  = left;
+        op_node->right = Load_Tree_From_Buffer (ptr);
 
-        struct Node* node = Parse_Elem_To_Node (elem_str);
-        if (node == NULL)
-            return NULL;
-
-        while (**ptr == ' ' || **ptr == '\n' || **ptr == '\r' || **ptr == '\t')
-            (*ptr)++;
-
-        if (**ptr == '(')
-        {
-            node->left  = Load_Tree_From_Buffer (ptr);
-            node->right = Load_Tree_From_Buffer (ptr);
-        }
-
-        while (**ptr == ' ' || **ptr == '\n' || **ptr == '\r' || **ptr == '\t')
+        while (isspace ((unsigned char)**ptr))
             (*ptr)++;
 
         if (**ptr == ')')
             (*ptr)++;
 
-        return node;
+        return op_node;
     }
 
-    return NULL;
+
+    char elem_str[128] = { 0 };
+    int i = 0;
+    while (!isspace ((unsigned char)**ptr) && **ptr != '(' && **ptr != ')' && **ptr != '\0' && i < 127)
+    {
+        elem_str[i++] = **ptr;
+        (*ptr)++;
+    }
+    elem_str[i] = '\0';
+
+    return Parse_Elem_To_Node (elem_str);
 }
+
 
 
 double                Count_Tree               (const struct Node* node, double x_val, double y_val)
@@ -202,12 +221,12 @@ double                Count_Tree               (const struct Node* node, double 
         case MUL: return l * r;
         case DIV:
         {
-            if (r != 0.0)
+            if (r != 0)
                 return (l / r);
             else
-                return 0.0;
+                return 0;
         }
-        default:  return 0.0;
+        default:  return 0;
     }
 }
 
@@ -221,7 +240,15 @@ struct Node*          Diff                    (const struct Node* node, char var
             return _NUM (0);
 
         case VAR:
-            return ((char)node->val == var_name) ? _NUM (1) : _NUM (0);
+            if ( (char) node->val == var_name)
+            {
+                return _NUM (1);
+            }
+
+            else 
+            {
+                return _NUM (0);
+            }
 
         case OP:
             switch ((int)node->val)
