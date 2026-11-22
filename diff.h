@@ -43,7 +43,10 @@ struct Node
 #define _DL Diff (node->left, var_name)
 #define _DR Diff (node->right, var_name)
 
-struct Node*          New_Node                (int type, double val, struct Node* left, struct Node* right);
+
+void                  Input                   (char** buffer, struct Node** manual_formula, struct Node** formula);
+
+struct Node           *New_Node(int type, double val, struct Node *left, struct Node *right);
 struct Node*          Copy_Tree               (const struct Node* node);
 void                  Tree_Destroy            (struct Node* node);
 
@@ -54,8 +57,13 @@ struct Node*          Parse_Elem_To_Node      (const char* elem_str);
 double                Count_Tree               (const struct Node* node, double x_val, double y_val);
 struct Node*          Diff                    (const struct Node* node, char var_name);
 
+
+void                  Output                  (struct Node *formula, struct Node *d_formula, double res);
 void                  Graph_Dump              (const struct Node* root, const char* dot_file, const char* png_file);
 void                  Run_Draw                (const struct Node* node, FILE* out);
+void                  Html_Dump               (const char* html_file, double eval_res,
+                                               const char* img1, const char* img2, const char* pdf_file);
+
 void                  Tex_Dump                (const struct Node* root, FILE* tex_file, const char* title);
 void                  Print_Tex               (const struct Node* node, FILE* out);
 
