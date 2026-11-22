@@ -1,5 +1,10 @@
 #include "diff.h"
 
+/*
+Написать верификатор
+
+*/
+
 int main ()
 {
     struct Node* manual_formula = _DIV (_ADD (_NUM (2), _VAR ('x')), _SUB (_NUM (5), _VAR ('y')));
@@ -12,8 +17,8 @@ int main ()
     printf ("Result (x=3, y=1): %g\n", res);
 
     struct Node* d_formula = Diff (formula, 'x');
-
-    Output(formula, d_formula, res);
+    d_formula = Simplify_Tree (d_formula);
+    Output (formula, d_formula, res);
 
     Tree_Destroy (formula);
     Tree_Destroy (d_formula);
@@ -174,6 +179,134 @@ struct Node*          Load_Tree_From_Buffer   (char** ptr)
     elem_str[i] = '\0';
 
     return Parse_Elem_To_Node (elem_str);
+}
+
+int                   Is_Zero                 (const struct Node* node)
+{
+    return (node != NULL && node->type == NUM && fabs (node->val) < 1e-9);
+}
+
+int                   Is_One                  (const struct Node* node)
+{
+    return (node != NULL && node->type == NUM && fabs (node->val - 1.0) < 1e-9);
+}
+
+struct Node*          Simplify_Tree           (struct Node* node)
+{
+    if (node == NULL)
+        return NULL;
+
+    if (node->type != OP)
+        return node;
+
+    node->left  = Simplify_Tree (node->left);
+    node->right = Simplify_Tree (node->right);
+
+    int op = (int)node->val;
+
+    if (node->left->type == NUM && node->right->type == NUM)
+    {
+        double l   = node->left->val;
+        double r   = node->right->val;
+        double res = 0.0;
+
+        switch (op)
+        {
+            case ADD: res = l + r; break;
+            case SUB: res = l - r; break;
+            case MUL: res = l * r; break;
+            case DIV:
+            {
+                if (fabs (r) < 1e-9) 
+                    return node;
+                res = l / r;
+                break;
+            }
+            default:
+                return node;
+        }
+
+        Tree_Destroy (node);
+        return _NUM (res);
+    }
+
+    
+    switch (op)
+    {
+        case ADD:
+        {
+            if (Is_Zero (node->left))  
+            {
+                struct Node* keep = node->right;
+                free (node->left);
+                free (node);
+                return keep;
+            }
+            if (Is_Zero (node->right)) 
+            {
+                struct Node* keep = node->left;
+                free (node->right);
+                free (node);
+                return keep;
+            }
+            break;
+        }
+
+        case SUB:
+        {
+            if (Is_Zero (node->right)) 
+            {
+                struct Node* keep = node->left;
+                free (node->right);
+                free (node);
+                return keep;
+            }
+            break;
+        }
+
+        case MUL:
+        {
+            if (Is_Zero (node->left) || Is_Zero (node->right)) 
+            {
+                Tree_Destroy (node);
+                return _NUM (0);
+            }
+            if (Is_One (node->left))  
+            {
+                struct Node* keep = node->right;
+                free (node->left);
+                free (node);
+                return keep;
+            }
+            if (Is_One (node->right))  
+            {
+                struct Node* keep = node->left;
+                free (node->right);
+                free (node);
+                return keep;
+            }
+            break;
+        }
+
+        case DIV:
+        {
+            if (Is_Zero (node->left))  
+            {
+                Tree_Destroy (node);
+                return _NUM (0);
+            }
+            if (Is_One (node->right))  
+            {
+                struct Node* keep = node->left;
+                free (node->right);
+                free (node);
+                return keep;
+            }
+            break;
+        }
+    }
+
+    return node;
 }
 
 
