@@ -3,52 +3,17 @@
 int main ()
 {
     struct Node* manual_formula = _DIV (_ADD (_NUM (2), _VAR ('x')), _SUB (_NUM (5), _VAR ('y')));
-
     char* buffer      = NULL;
     struct Node* formula = NULL;
 
-    if (ReadFromFile ("formula.txt", &buffer) > 0 && buffer != NULL)
-    {
-        char* ptr = buffer;
-        formula = Load_Tree_From_Buffer (&ptr);
-        free (buffer);
-    }
-    else
-    {
-        formula = manual_formula;
-        manual_formula = NULL;
-    }
-
+    Input (&buffer, &manual_formula, &formula);
+    
     double res = Count_Tree (formula, 3.0, 1.0);
     printf ("Result (x=3, y=1): %g\n", res);
 
     struct Node* d_formula = Diff (formula, 'x');
 
-    Graph_Dump (formula, "formula.dot", "formula.png");
-
-    printf ("Enter to continue..........\n");
-    getchar ();
-
-    Graph_Dump (d_formula, "diff.dot", "diff.png");
-
-    FILE* tex = fopen ("dump.tex", "w");
-    if (tex != NULL)
-    {
-        fprintf (tex, "\\documentclass{article}\n"
-                    "\\usepackage{fontspec}\n"
-                    "\\setmainfont{Times New Roman}\n"
-                    "\\begin{document}\n");
-
-        Tex_Dump (formula,   tex, "Исходное выражение:");
-        Tex_Dump (d_formula, tex, "Производная по x:");
-
-        fprintf (tex, "\\end{document}\n");
-        fclose (tex); // <--- ОБЯЗАТЕЛЬНО закрыть файл ДО запуска tectonic!
-
-        system ("tectonic dump.tex");
-        system ("start dump.pdf");
-    }
-
+    Output(formula, d_formula, res);
 
     Tree_Destroy (formula);
     Tree_Destroy (d_formula);
@@ -57,6 +22,22 @@ int main ()
     return 0;
 }
 
+
+void                  Input                   (char** buffer, struct Node** manual_formula, struct Node** formula)
+{
+    if (ReadFromFile ("formula.txt", buffer) > 0 && *buffer != NULL)
+    {
+        char* ptr = *buffer;
+        *formula = Load_Tree_From_Buffer (&ptr);
+        free (*buffer);
+    }
+    else
+    {
+        *formula = *manual_formula;
+        *manual_formula = NULL;
+    }
+
+}
 
 struct Node*          New_Node                (int type, double val, struct Node* left, struct Node* right)
 {
@@ -197,7 +178,7 @@ struct Node*          Load_Tree_From_Buffer   (char** ptr)
 
 
 
-double                Count_Tree               (const struct Node* node, double x_val, double y_val)
+double                Count_Tree              (const struct Node* node, double x_val, double y_val)
 {
     assert (node != NULL);
 
@@ -275,6 +256,29 @@ struct Node*          Diff                    (const struct Node* node, char var
 }
 
 
+void                  Output                  (struct Node *formula, struct Node *d_formula, double res)
+{
+    //Graph_Dump(formula, "formula.dot", "formula.png");
+    Graph_Dump(d_formula, "diff.dot", "diff.png");
+
+    FILE *tex = fopen("dump.tex", "w");
+    if (tex != NULL)
+    {
+        fprintf(tex, "\\documentclass{article}\n"
+                     "\\usepackage{fontspec}\n"
+                     "\\setmainfont{Times New Roman}\n"
+                     "\\begin{document}\n");
+        Tex_Dump(formula, tex, "Исходное выражение:");
+        Tex_Dump(d_formula, tex, "Производная по x:");
+        fprintf(tex, "\\end{document}\n");
+        fclose(tex);
+
+        system("tectonic dump.tex");
+    }
+
+    Html_Dump("dump.html", res, "formula.png", "diff.png", "dump.pdf");
+}
+
 void                  Graph_Dump              (const struct Node* root, const char* dot_file, const char* png_file)
 {
     if (root == NULL)
@@ -297,8 +301,6 @@ void                  Graph_Dump              (const struct Node* root, const ch
     snprintf (cmd, sizeof (cmd), "dot -Tpng %s -o %s", dot_file, png_file);
     system   (cmd);
 
-    snprintf (cmd, sizeof (cmd), "start %s", png_file);
-    system   (cmd);
 }
 
 void                  Run_Draw                (const struct Node* node, FILE* out)
@@ -349,6 +351,48 @@ void                  Run_Draw                (const struct Node* node, FILE* ou
         Run_Draw (node->right, out);
     }
 }
+
+void                  Html_Dump               (const char* html_file, double eval_res,
+                                               const char* img1, const char* img2, const char* pdf_file)
+{
+    assert (html_file != NULL);
+
+    FILE* html = fopen (html_file, "w");
+    if (html == NULL)
+        return;
+
+    fprintf (html, "<pre>\n");
+
+    fprintf (html, "============================================================\n");
+    fprintf (html, "                    DIFFERENTIATOR DUMP                     \n");
+    fprintf (html, "============================================================\n\n");
+
+    fprintf (html, "Result (x = 3, y = 1): %g\n\n", eval_res);
+
+    /*if (img1 != NULL)
+    {
+        fprintf (html, "<img src=\"%s\" alt=\"Original Tree\">\n\n", img1);
+    }*/
+
+    if (img2 != NULL)
+    {
+        fprintf (html, "<img src=\"%s\" alt=\"Derivative Tree\">\n\n", img2);
+    }
+
+    if (pdf_file != NULL)
+    {
+        
+        fprintf (html, "<iframe src=\"%s #toolbar=0\" width=\"900\" height=\"600\" style=\"border: 1px solid #444;\"></iframe>\n\n", pdf_file);
+    }
+
+    fprintf (html, "</pre>\n");
+    fclose (html);
+
+    char cmd[256] = { 0 };
+    snprintf (cmd, sizeof (cmd), "start %s", html_file);
+    system   (cmd);
+}
+
 
 void                  Tex_Dump                (const struct Node* root, FILE* tex_file, const char* title)
 {
