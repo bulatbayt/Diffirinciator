@@ -2,7 +2,9 @@
 
 /*
 Написать верификатор
-
+считаем, что любые переменные не зависят от х -- achieved
+521 строчка сделать пользовательский выбор значения переменной, после этого уже запускать dump
+в html все окно черное 
 */
 
 int main ()
@@ -191,7 +193,7 @@ int                   Is_One                  (const struct Node* node)
     return (node != NULL && node->type == NUM && fabs (node->val - 1.0) < 1e-9);
 }
 
-struct Node*          Simplify_Tree           (struct Node* node)
+struct Node*          Simplify_Tree           (struct Node* node) // поделить на функции
 {
     if (node == NULL)
         return NULL;
@@ -208,13 +210,28 @@ struct Node*          Simplify_Tree           (struct Node* node)
     {
         double l   = node->left->val;
         double r   = node->right->val;
-        double res = 0.0;
+        double res = 0;
 
         switch (op)
         {
-            case ADD: res = l + r; break;
-            case SUB: res = l - r; break;
-            case MUL: res = l * r; break;
+            case ADD: 
+            {
+                res = l + r; 
+                break;
+            }
+
+            case SUB:
+            { 
+                res = l - r; 
+                break;
+            }
+
+            case MUL:
+            {
+                res = l * r; 
+                break;
+            }
+
             case DIV:
             {
                 if (fabs (r) < 1e-9) 
@@ -222,6 +239,7 @@ struct Node*          Simplify_Tree           (struct Node* node)
                 res = l / r;
                 break;
             }
+
             default:
                 return node;
         }
@@ -322,7 +340,7 @@ double                Count_Tree              (const struct Node* node, double x
     {
         if ((char)node->val == 'x') return x_val;
         if ((char)node->val == 'y') return y_val;
-        return 0.0;
+        return 0;
     }
 
     double l = Count_Tree (node->left, x_val, y_val);
@@ -494,28 +512,30 @@ void                  Html_Dump               (const char* html_file, double eva
     if (html == NULL)
         return;
 
-    fprintf (html, "<pre>\n");
+    fprintf (html, "<pre style=\"background-color: #222; color: #00ff00;\">\n");
 
-    fprintf (html, "============================================================\n");
-    fprintf (html, "                    DIFFERENTIATOR DUMP                     \n");
-    fprintf (html, "============================================================\n\n");
+    
+   // fprintf (html, "<p style=\"text-align: center; color: red; font-size: 30px;\">============================================================</p>\n");
+    fprintf (html, "<p style=\"text-align: center; color: red; font-size: 30px;\">DIFFERENTIATOR DUMP</p>\n");
+   // fprintf (html, "<p style=\"text-align: center; color: red; font-size: 30px;\">============================================================</p>\n");
 
-    fprintf (html, "Result (x = 3, y = 1): %g\n\n", eval_res);
+    //fprintf (html, "Result (x = 3, y = 1): %g\n\n", eval_res);
 
     /*if (img1 != NULL)
     {
         fprintf (html, "<img src=\"%s\" alt=\"Original Tree\">\n\n", img1);
     }*/
 
-    if (img2 != NULL)
+    /*if (img2 != NULL)
     {
         fprintf (html, "<img src=\"%s\" alt=\"Derivative Tree\">\n\n", img2);
-    }
+    }*/
 
-    if (pdf_file != NULL)
+    if (pdf_file != NULL && img2 != NULL)
     {
+        fprintf (html," <div align=\"center\"><img src=\"FRKT_logo.png\" width=\"400\" height=\"200\" > </div>\n\n\n");
         
-        fprintf (html, "<iframe src=\"%s #toolbar=0\" width=\"900\" height=\"600\" style=\"border: 1px solid #444;\"></iframe>\n\n", pdf_file);
+        fprintf (html, "<img src=\"%s\"> <iframe src=\"%s #toolbar=0\" width=\"600\" height=\"400\" style=\"border: 1px solid #444; \" align=\"right\"></iframe>\n\n",img2, pdf_file);
     }
 
     fprintf (html, "</pre>\n");
@@ -612,10 +632,12 @@ void                  Print_Tex               (const struct Node* node, FILE* ou
             {
                 fprintf (out, "(");
             }
+        
             Print_Tex (node->right, out);
+        
             if (need_right_brackets)
             {
-            fprintf (out, ")");
+                fprintf (out, ")");
             }
     }
 }
