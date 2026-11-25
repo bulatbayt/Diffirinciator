@@ -2,9 +2,18 @@
 
 /*
 Написать верификатор
-считаем, что любые переменные не зависят от х -- achieved
-521 строчка сделать пользовательский выбор значения переменной, после этого уже запускать dump
-в html все окно черное 
+
+добавить в структуре нода родителя, чтобы легче дебажить
+
+поделить на функции упрощалку                                    ------achieved
+
+функция skip space                                               ------achieved
+
+побольше функций для диффиринцирования (sinx, cosx, lnx, степени)
+
+можно поддерживать разные переменные (x,y,z .... массив из 26 элементов, подумать)
+
+дебажный дамп дерева , по шагам
 */
 
 int main ()
@@ -15,8 +24,8 @@ int main ()
 
     Input (&buffer, &manual_formula, &formula);
     
-    double res = Count_Tree (formula, 3.0, 1.0);
-    printf ("Result (x=3, y=1): %g\n", res);
+    double res = Count_Tree (formula, 3, 1);
+    printf ("Result (x=3, y=1): %lg\n", res);
 
     struct Node* d_formula = Diff (formula, 'x');
     d_formula = Simplify_Tree (d_formula);
@@ -29,22 +38,6 @@ int main ()
     return 0;
 }
 
-
-void                  Input                   (char** buffer, struct Node** manual_formula, struct Node** formula)
-{
-    if (ReadFromFile ("formula.txt", buffer) > 0 && *buffer != NULL)
-    {
-        char* ptr = *buffer;
-        *formula = Load_Tree_From_Buffer (&ptr);
-        free (*buffer);
-    }
-    else
-    {
-        *formula = *manual_formula;
-        *manual_formula = NULL;
-    }
-
-}
 
 struct Node*          New_Node                (int type, double val, struct Node* left, struct Node* right)
 {
@@ -77,6 +70,23 @@ void                  Tree_Destroy            (struct Node* node)
     free (node);
 }
 
+
+
+void                  Input                   (char** buffer, struct Node** manual_formula, struct Node** formula)
+{
+    if (ReadFromFile ("formula.txt", buffer) > 0 && *buffer != NULL)
+    {
+        char* ptr = *buffer;
+        *formula = Load_Tree_From_Buffer (&ptr);
+        free (*buffer);
+    }
+    else
+    {
+        *formula = *manual_formula;
+        *manual_formula = NULL;
+    }
+
+}
 
 int                   ReadFromFile            (const char* name_file, char** buffer)
 {
@@ -120,8 +130,7 @@ struct Node*          Parse_Elem_To_Node      (const char* elem_str)
 
 struct Node*          Load_Tree_From_Buffer   (char** ptr)
 {
-    while (isspace ((unsigned char)**ptr))
-        (*ptr)++;
+        SkipSpace(ptr);
 
     if (**ptr == '\0')
         return NULL;
@@ -130,14 +139,11 @@ struct Node*          Load_Tree_From_Buffer   (char** ptr)
     if (**ptr == '(')
     {
         (*ptr)++;
-        while (isspace ((unsigned char)**ptr))
-            (*ptr)++;
-
+        SkipSpace(ptr);
 
         struct Node* left = Load_Tree_From_Buffer (ptr);
 
-        while (isspace ((unsigned char)**ptr))
-            (*ptr)++;
+        SkipSpace(ptr);
 
 
         if (**ptr == ')')
@@ -161,8 +167,7 @@ struct Node*          Load_Tree_From_Buffer   (char** ptr)
         op_node->left  = left;
         op_node->right = Load_Tree_From_Buffer (ptr);
 
-        while (isspace ((unsigned char)**ptr))
-            (*ptr)++;
+        SkipSpace(ptr);
 
         if (**ptr == ')')
             (*ptr)++;
@@ -173,7 +178,9 @@ struct Node*          Load_Tree_From_Buffer   (char** ptr)
 
     char elem_str[128] = { 0 };
     int i = 0;
-    while (!isspace ((unsigned char)**ptr) && **ptr != '(' && **ptr != ')' && **ptr != '\0' && i < 127)
+    while (!isspace ((unsigned char)**ptr)  && 
+            **ptr != '('  && **ptr != ')'    && 
+            **ptr != '\0' && i < 127)
     {
         elem_str[i++] = **ptr;
         (*ptr)++;
@@ -183,6 +190,14 @@ struct Node*          Load_Tree_From_Buffer   (char** ptr)
     return Parse_Elem_To_Node (elem_str);
 }
 
+
+
+void                  SkipSpace               (char **ptr)
+{
+    while (isspace((unsigned char)**ptr))
+        (*ptr)++;
+}
+
 int                   Is_Zero                 (const struct Node* node)
 {
     return (node != NULL && node->type == NUM && fabs (node->val) < 1e-9);
@@ -190,10 +205,12 @@ int                   Is_Zero                 (const struct Node* node)
 
 int                   Is_One                  (const struct Node* node)
 {
-    return (node != NULL && node->type == NUM && fabs (node->val - 1.0) < 1e-9);
+    return (node != NULL && node->type == NUM && fabs (node->val - 1) < 1e-9);
 }
 
-struct Node*          Simplify_Tree           (struct Node* node) // поделить на функции
+
+
+struct Node*          Simplify_Tree           (struct Node* node) 
 {
     if (node == NULL)
         return NULL;
@@ -206,6 +223,26 @@ struct Node*          Simplify_Tree           (struct Node* node) // подел�
 
     int op = (int)node->val;
 
+    struct Node* res_return = Simplify_Num (node, op);
+    if (res_return != NULL)
+    {
+        return res_return;
+    }
+
+    res_return = NULL;
+
+    res_return = Simplify_Op (node, op);
+    if (res_return != NULL)
+    {
+        return res_return;
+    }
+    
+
+    return node;
+}
+
+struct Node*          Simplify_Num            (struct Node* node, int op)
+{
     if (node->left->type == NUM && node->right->type == NUM)
     {
         double l   = node->left->val;
@@ -248,83 +285,128 @@ struct Node*          Simplify_Tree           (struct Node* node) // подел�
         return _NUM (res);
     }
 
+    return NULL;
+}
+
+struct Node*          Simplify_Op             (struct Node* node, int op)
+{
+    struct Node* res_return = NULL;
     
     switch (op)
     {
         case ADD:
         {
-            if (Is_Zero (node->left))  
+            res_return = Simplify_Add (node);
+            if (res_return != NULL)
             {
-                struct Node* keep = node->right;
-                free (node->left);
-                free (node);
-                return keep;
+                return res_return;
             }
-            if (Is_Zero (node->right)) 
-            {
-                struct Node* keep = node->left;
-                free (node->right);
-                free (node);
-                return keep;
-            }
+
             break;
         }
 
         case SUB:
         {
-            if (Is_Zero (node->right)) 
+            res_return = Simplify_Sub (node);
+            if (res_return != NULL)
             {
-                struct Node* keep = node->left;
-                free (node->right);
-                free (node);
-                return keep;
+                return res_return;
             }
+            
             break;
         }
 
         case MUL:
         {
-            if (Is_Zero (node->left) || Is_Zero (node->right)) 
+            res_return = Simplify_Mul (node);
+            if (res_return != NULL)
             {
-                Tree_Destroy (node);
-                return _NUM (0);
+                return res_return;
             }
-            if (Is_One (node->left))  
-            {
-                struct Node* keep = node->right;
-                free (node->left);
-                free (node);
-                return keep;
-            }
-            if (Is_One (node->right))  
-            {
-                struct Node* keep = node->left;
-                free (node->right);
-                free (node);
-                return keep;
-            }
+            
             break;
         }
 
         case DIV:
         {
-            if (Is_Zero (node->left))  
+            res_return = Simplify_Div (node);
+            if (res_return != NULL)
             {
-                Tree_Destroy (node);
-                return _NUM (0);
+                return res_return;
             }
-            if (Is_One (node->right))  
-            {
-                struct Node* keep = node->left;
-                free (node->right);
-                free (node);
-                return keep;
-            }
+            
             break;
         }
     }
+}
 
-    return node;
+struct Node*          Simplify_Add             (struct Node* node)
+{
+    if (Is_Zero (node->left))  
+    {
+        struct Node* keep = node->right;
+        free (node->left);
+        free (node);
+        return keep;
+    }
+
+    if (Is_Zero (node->right)) 
+    {
+        struct Node* keep = node->left;
+        free (node->right);
+        free (node);
+        return keep;
+    }
+}
+
+struct Node*          Simplify_Sub             (struct Node* node)
+{
+    if (Is_Zero (node->right)) 
+    {
+        struct Node* keep = node->left;
+        free (node->right);
+        free (node);
+        return keep;
+    }
+}
+
+struct Node*          Simplify_Mul             (struct Node* node)
+{
+    if (Is_Zero (node->left) || Is_Zero (node->right)) 
+    {
+        Tree_Destroy (node);
+        return _NUM (0);
+    }
+    if (Is_One (node->left))  
+    {
+        struct Node* keep = node->right;
+        free (node->left);
+        free (node);
+        return keep;
+    }
+    if (Is_One (node->right))  
+    {
+        struct Node* keep = node->left;
+        free (node->right);
+        free (node);
+        return keep;
+    }
+}
+
+struct Node*          Simplify_Div             (struct Node* node)
+{
+    if (Is_Zero (node->left))  
+    {
+        Tree_Destroy (node);
+        return _NUM (0);
+    }
+    if (Is_One (node->right))  
+    {
+        struct Node* keep = node->left;
+        free (node->right);
+        free (node);
+        return keep;
+    }
 }
 
 
@@ -407,6 +489,7 @@ struct Node*          Diff                    (const struct Node* node, char var
 }
 
 
+
 void                  Output                  (struct Node *formula, struct Node *d_formula, double res)
 {
     //Graph_Dump(formula, "formula.dot", "formula.png");
@@ -461,7 +544,7 @@ void                  Run_Draw                (const struct Node* node, FILE* ou
 
     if (node->type == NUM)
     {
-        fprintf (out, "  N%p [label = \"{ NUM | %g }\", fillcolor = \"#C0E0FF\"];\n",
+        fprintf (out, "  N%p [label = \"{ NUM | %lg }\", fillcolor = \"#C0E0FF\"];\n",
                 (void*)node, node->val);
     }
     else if (node->type == VAR)
@@ -478,7 +561,7 @@ void                  Run_Draw                (const struct Node* node, FILE* ou
     }
     else if (node->type == OP)
     {
-        const char* op_name = "?";
+        const char* op_name = " ";
         const char* color   = "#FFB6C1";
         switch ((int)node->val)
         {
@@ -493,12 +576,13 @@ void                  Run_Draw                (const struct Node* node, FILE* ou
 
     if (node->left != NULL)
     {
-        fprintf (out, "  N%p -> N%p;\n", (void*)node, (void*)node->left);
+        fprintf (out, "  N%p -> N%p [dir=both; color = \"#00bc7e\"; arrowsize = 0.7];\n", (void*)node, (void*)node->left);
         Run_Draw (node->left, out);
     }
+
     if (node->right != NULL)
     {
-        fprintf (out, "  N%p -> N%p;\n", (void*)node, (void*)node->right);
+        fprintf (out, "  N%p -> N%p [dir=both; color = \"#05875c\"; arrowsize = 0.7];\n", (void*)node, (void*)node->right);
         Run_Draw (node->right, out);
     }
 }
@@ -512,14 +596,14 @@ void                  Html_Dump               (const char* html_file, double eva
     if (html == NULL)
         return;
 
-    fprintf (html, "<pre style=\"background-color: #222; color: #00ff00;\">\n");
+    fprintf (html, "<body style=\"background-color: #222; color: #ff0000;\">\n");
 
     
    // fprintf (html, "<p style=\"text-align: center; color: red; font-size: 30px;\">============================================================</p>\n");
     fprintf (html, "<p style=\"text-align: center; color: red; font-size: 30px;\">DIFFERENTIATOR DUMP</p>\n");
    // fprintf (html, "<p style=\"text-align: center; color: red; font-size: 30px;\">============================================================</p>\n");
 
-    //fprintf (html, "Result (x = 3, y = 1): %g\n\n", eval_res);
+    fprintf (html, " <p style=\"text-align: center; color: red; font-size: 30px;\"> Result: %lg </p>\n\n", eval_res);
 
     /*if (img1 != NULL)
     {
@@ -533,19 +617,18 @@ void                  Html_Dump               (const char* html_file, double eva
 
     if (pdf_file != NULL && img2 != NULL)
     {
-        fprintf (html," <div align=\"center\"><img src=\"FRKT_logo.png\" width=\"400\" height=\"200\" > </div>\n\n\n");
-        
-        fprintf (html, "<img src=\"%s\"> <iframe src=\"%s #toolbar=0\" width=\"600\" height=\"400\" style=\"border: 1px solid #444; \" align=\"right\"></iframe>\n\n",img2, pdf_file);
+        fprintf (html," <div align=\"center\"><img src=\"FRKT_logo.png\" width=\"400\" height=\"200\" > </div>");
+        fprintf (html,"<p> \n </p>");        
+        fprintf (html, "<img src=\"%s\" width=\"600\" height=\"400\" \" align=\"left\"> <iframe src=\"%s #toolbar=0\" width=\"600\" height=\"400\" \" align=\"right\"></iframe>\n\n",img2, pdf_file);
     }
 
-    fprintf (html, "</pre>\n");
+    fprintf (html, "</body>\n");
     fclose (html);
 
     char cmd[256] = { 0 };
     snprintf (cmd, sizeof (cmd), "start %s", html_file);
     system   (cmd);
 }
-
 
 void                  Tex_Dump                (const struct Node* root, FILE* tex_file, const char* title)
 {
@@ -565,9 +648,9 @@ void                  Print_Tex               (const struct Node* node, FILE* ou
     if (node->type == NUM)
     {
         if (node->val < 0)
-            fprintf (out, "(%g)", node->val);
+            fprintf (out, "(%lg)", node->val);
         else
-            fprintf (out, "%g", node->val);
+            fprintf (out, "%lg", node->val);
         return;
     }
 
@@ -641,3 +724,4 @@ void                  Print_Tex               (const struct Node* node, FILE* ou
             }
     }
 }
+
