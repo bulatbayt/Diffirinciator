@@ -9,28 +9,35 @@
 
 функция skip space                                               ------achieved
 
-побольше функций для диффиринцирования (sinx, cosx, lnx, степени)
+побольше функций для диффиринцирования (sinx, cosx, lnx, степени) --- achieved
 
 можно поддерживать разные переменные (x,y,z .... массив из 26 элементов, подумать)
 
-дебажный дамп дерева , по шагам
+дебажный дамп дерева , по шагам (сделать массив строк с фразами, которые будут случайно выбираться и выводиться как дополнение к шагам + такой же массив с соединительными союзами)
 */
 
 int main ()
 {
     struct Node* manual_formula = _DIV (_ADD (_NUM (2), _VAR ('x')), _SUB (_NUM (5), _VAR ('y')));
-    char* buffer      = NULL;
+    char* buffer         = NULL;
     struct Node* formula = NULL;
+
+    FILE* Dump_count = fopen ("Dump_count.txt", "w");
+    srand(time(NULL)); 
 
     Input (&buffer, &manual_formula, &formula);
     
-    double res = Count_Tree (formula, 3, 1);
+    double x = 3, y = 1;
+    fprintf (Dump_count, "x = %lg; y = %lg\n\n", x, y);
+    double res = Count_Tree (formula, x, y, Dump_count);
     printf ("Result (x=3, y=1): %lg\n", res);
 
     struct Node* d_formula = Diff (formula, 'x');
-    d_formula = Simplify_Tree (d_formula);
+    d_formula = Simplify_Tree (d_formula, Dump_count);
     Output (formula, d_formula, res);
 
+
+    fclose (Dump_count);
     Tree_Destroy (formula);
     Tree_Destroy (d_formula);
     Tree_Destroy (manual_formula);
@@ -114,6 +121,11 @@ struct Node*          Parse_Elem_To_Node      (const char* elem_str)
     if (strcmp (elem_str, "-") == 0) return New_Node (OP, SUB, NULL, NULL);
     if (strcmp (elem_str, "*") == 0) return New_Node (OP, MUL, NULL, NULL);
     if (strcmp (elem_str, "/") == 0) return New_Node (OP, DIV, NULL, NULL);
+    if (strcmp (elem_str, "^")   == 0) return New_Node (OP, POW, NULL, NULL);
+    if (strcmp (elem_str, "sin") == 0) return New_Node (OP, SIN, NULL, NULL);
+    if (strcmp (elem_str, "cos") == 0) return New_Node (OP, COS, NULL, NULL);
+    if (strcmp (elem_str, "ln")  == 0) return New_Node (OP, LN,  NULL, NULL);
+
 
     char* endptr = NULL;
     double num = strtod (elem_str, &endptr);
@@ -130,21 +142,44 @@ struct Node*          Parse_Elem_To_Node      (const char* elem_str)
 
 struct Node*          Load_Tree_From_Buffer   (char** ptr)
 {
-        SkipSpace(ptr);
+    SkipSpace (ptr);
 
     if (**ptr == '\0')
         return NULL;
 
-
     if (**ptr == '(')
     {
         (*ptr)++;
-        SkipSpace(ptr);
+        SkipSpace (ptr);
 
+        if (strncmp (*ptr, "sin", 3) == 0 || strncmp (*ptr, "cos", 3) == 0 || strncmp (*ptr, "ln", 2) == 0)
+        {
+            char func_name[16]= { 0 };
+            int k = 0;
+            while (isalpha ((unsigned char)**ptr) && k < 15)
+            {
+                func_name[k++] = *(*ptr)++;
+            }
+            func_name[k] = '\0';
+
+            struct Node* func_node = Parse_Elem_To_Node (func_name);
+            if (func_node == NULL)
+                return NULL;
+
+            func_node->left  = NULL;
+            func_node->right = Load_Tree_From_Buffer (ptr);
+
+            SkipSpace (ptr);
+            if (**ptr == ')')
+                (*ptr)++;
+
+            return func_node;
+        }
+
+        
         struct Node* left = Load_Tree_From_Buffer (ptr);
 
-        SkipSpace(ptr);
-
+        SkipSpace (ptr);
 
         if (**ptr == ')')
         {
@@ -152,7 +187,6 @@ struct Node*          Load_Tree_From_Buffer   (char** ptr)
             return left;
         }
 
-    
         char op_str[2] = { **ptr, '\0' };
         (*ptr)++;
 
@@ -163,11 +197,10 @@ struct Node*          Load_Tree_From_Buffer   (char** ptr)
             return NULL;
         }
 
-
         op_node->left  = left;
         op_node->right = Load_Tree_From_Buffer (ptr);
 
-        SkipSpace(ptr);
+        SkipSpace (ptr);
 
         if (**ptr == ')')
             (*ptr)++;
@@ -175,20 +208,38 @@ struct Node*          Load_Tree_From_Buffer   (char** ptr)
         return op_node;
     }
 
-
+    
+    
     char elem_str[128] = { 0 };
     int i = 0;
-    while (!isspace ((unsigned char)**ptr)  && 
-            **ptr != '('  && **ptr != ')'    && 
-            **ptr != '\0' && i < 127)
+    while (!isspace ((unsigned char)**ptr) &&
+           **ptr != '(' && **ptr != ')' &&
+           **ptr != '\0' && i < 127)
     {
         elem_str[i++] = **ptr;
         (*ptr)++;
     }
     elem_str[i] = '\0';
 
+    struct Node* atom = Parse_Elem_To_Node (elem_str);
+    if (atom == NULL)
+        return NULL;
+
+    SkipSpace (ptr);
+
+
+    if (atom->type == OP && (atom->val == SIN || atom->val == COS || atom->val == LN))
+    {
+        atom->left  = NULL;
+        atom->right = Load_Tree_From_Buffer (ptr);
+    }
+
+    return atom;
+
+
     return Parse_Elem_To_Node (elem_str);
 }
+
 
 
 
@@ -210,7 +261,7 @@ int                   Is_One                  (const struct Node* node)
 
 
 
-struct Node*          Simplify_Tree           (struct Node* node) 
+struct Node*          Simplify_Tree           (struct Node* node, FILE* Dump_count) 
 {
     if (node == NULL)
         return NULL;
@@ -218,12 +269,12 @@ struct Node*          Simplify_Tree           (struct Node* node)
     if (node->type != OP)
         return node;
 
-    node->left  = Simplify_Tree (node->left);
-    node->right = Simplify_Tree (node->right);
+    node->left  = Simplify_Tree (node->left, Dump_count);
+    node->right = Simplify_Tree (node->right, Dump_count);
 
     int op = (int)node->val;
 
-    struct Node* res_return = Simplify_Num (node, op);
+    struct Node* res_return = Simplify_Num (node, op, Dump_count);
     if (res_return != NULL)
     {
         return res_return;
@@ -241,8 +292,11 @@ struct Node*          Simplify_Tree           (struct Node* node)
     return node;
 }
 
-struct Node*          Simplify_Num            (struct Node* node, int op)
+struct Node*          Simplify_Num            (struct Node* node, int op, FILE* Dump_count)
 {
+    if (node->left == NULL || node->right == NULL)
+        return NULL;
+
     if (node->left->type == NUM && node->right->type == NUM)
     {
         double l   = node->left->val;
@@ -253,18 +307,21 @@ struct Node*          Simplify_Num            (struct Node* node, int op)
         {
             case ADD: 
             {
+                Dump_Count_Tree (Dump_count, l, r, "+", l+r);
                 res = l + r; 
                 break;
             }
 
             case SUB:
             { 
+                Dump_Count_Tree (Dump_count, l, r, "-", l-r);
                 res = l - r; 
                 break;
             }
 
             case MUL:
             {
+                Dump_Count_Tree (Dump_count, l, r, "*", l*r);
                 res = l * r; 
                 break;
             }
@@ -273,6 +330,8 @@ struct Node*          Simplify_Num            (struct Node* node, int op)
             {
                 if (fabs (r) < 1e-9) 
                     return node;
+
+                Dump_Count_Tree (Dump_count, l, r, "/", l/r);
                 res = l / r;
                 break;
             }
@@ -338,6 +397,8 @@ struct Node*          Simplify_Op             (struct Node* node, int op)
             break;
         }
     }
+
+    return NULL;
 }
 
 struct Node*          Simplify_Add             (struct Node* node)
@@ -357,6 +418,8 @@ struct Node*          Simplify_Add             (struct Node* node)
         free (node);
         return keep;
     }
+
+    return NULL;
 }
 
 struct Node*          Simplify_Sub             (struct Node* node)
@@ -368,6 +431,8 @@ struct Node*          Simplify_Sub             (struct Node* node)
         free (node);
         return keep;
     }
+
+    return NULL;
 }
 
 struct Node*          Simplify_Mul             (struct Node* node)
@@ -391,6 +456,8 @@ struct Node*          Simplify_Mul             (struct Node* node)
         free (node);
         return keep;
     }
+
+    return NULL;
 }
 
 struct Node*          Simplify_Div             (struct Node* node)
@@ -407,11 +474,13 @@ struct Node*          Simplify_Div             (struct Node* node)
         free (node);
         return keep;
     }
+
+    return NULL;
 }
 
 
 
-double                Count_Tree              (const struct Node* node, double x_val, double y_val)
+double                Count_Tree              (const struct Node* node, double x_val, double y_val, FILE* Dump_count)
 {
     assert (node != NULL);
 
@@ -425,20 +494,76 @@ double                Count_Tree              (const struct Node* node, double x
         return 0;
     }
 
-    double l = Count_Tree (node->left, x_val, y_val);
-    double r = Count_Tree (node->right, x_val, y_val);
+    double l = 0;
+    double r = 0;
+
+    if ( node->left != NULL)
+    {
+        l = Count_Tree (node->left, x_val, y_val,  Dump_count);
+    }
+
+
+    if ( node->right != NULL)
+    {
+        r = Count_Tree (node->right, x_val, y_val, Dump_count);
+    }
+
 
     switch ((int)node->val)
     {
-        case ADD: return l + r;
-        case SUB: return l - r;
-        case MUL: return l * r;
+        case ADD: 
+        {
+            Dump_Count_Tree (Dump_count, l, r, "+", l+r);
+            return l + r;
+        }
+        case SUB: 
+        {
+            Dump_Count_Tree (Dump_count, l, r, "-", l-r);
+            return l - r;
+        }
+        case MUL:
+        {
+            Dump_Count_Tree (Dump_count, l, r, "*", l*r);
+            return l * r;
+        }
         case DIV:
         {
             if (r != 0)
+            {
+                Dump_Count_Tree (Dump_count, l, r, "/", l/r);
                 return (l / r);
+            }
             else
+            {
+                fprintf (Dump_count, " Очевидно, собрались делить на ноль\n");
                 return 0;
+            }
+        }
+
+        case POW: 
+        {
+            return pow (l, r);
+        }
+
+        case SIN: 
+        {
+            return sin (r);
+        }
+
+        case COS: 
+        {
+            return cos (r);
+        }
+
+        case LN:  
+        {   
+            if ( r > 0)
+                return log(r);
+            
+            else // что делать с этой ошибкой 
+            {
+                return 0;
+            }
         }
         default:  return 0;
     }
@@ -448,11 +573,13 @@ struct Node*          Diff                    (const struct Node* node, char var
 {
     assert (node != NULL);
 
+
     switch (node->type)
     {
         case NUM:
+        {
             return _NUM (0);
-
+        }
         case VAR:
             if ( (char) node->val == var_name)
             {
@@ -479,10 +606,30 @@ struct Node*          Diff                    (const struct Node* node, char var
                 case DIV:
                     return _DIV (_SUB (_MUL (_DL, _CR), _MUL (_CL, _DR)), _MUL (_CR, _CR));
 
+                case SIN:
+                    return _MUL (_COS (_CR), _DR);
+
+                case COS:
+                    return _MUL (_SUB (_NUM (0), _SIN (_CR)), _DR);
+
+                case LN:
+                    return _DIV (_DR, _CR);
+
+                case POW:
+                    if (node->right->type == NUM)
+                    {
+                        double n = node->right->val;
+                        return _MUL (_MUL (_NUM (n), _POW (_CL, _NUM (n - 1))), _DL);
+                    }
+                    return _MUL (_POW (_CL, _CR),
+                                _ADD (_MUL (_DR, _LN (_CL)),
+                                    _DIV (_MUL (_CR, _DL), _CL)));
+
                 default:
                     return NULL;
             }
 
+        
         default:
             return NULL;
     }
@@ -569,6 +716,10 @@ void                  Run_Draw                (const struct Node* node, FILE* ou
             case SUB: op_name = "SUB (-)"; color = "#FFA07A"; break;
             case MUL: op_name = "MUL (*)"; color = "#DDA0DD"; break;
             case DIV: op_name = "DIV (/)"; color = "#87CEFA"; break;
+            case POW: op_name = "POW (^)"; color = "#F0E68C"; break;
+            case SIN: op_name = "SIN";     color = "#90EE90"; break;
+            case COS: op_name = "COS";     color = "#AFEEEE"; break;
+            case LN:  op_name = "LN";      color = "#D8BFD8"; break;
         }
         fprintf (out, "  N%p [label = \"{ OP | %s }\", fillcolor = \"%s\"];\n",
                 (void*)node, op_name, color);
@@ -619,7 +770,7 @@ void                  Html_Dump               (const char* html_file, double eva
     {
         fprintf (html," <div align=\"center\"><img src=\"FRKT_logo.png\" width=\"400\" height=\"200\" > </div>");
         fprintf (html,"<p> \n </p>");        
-        fprintf (html, "<img src=\"%s\" width=\"600\" height=\"400\" \" align=\"left\"> <iframe src=\"%s #toolbar=0\" width=\"600\" height=\"400\" \" align=\"right\"></iframe>\n\n",img2, pdf_file);
+        fprintf (html, "<img src=\"%s\" width=\"600\" height=\"400\" \" align=\"left\"> <iframe src=\"%s#toolbar=0\" width=\"600\" height=\"400\" \" align=\"right\"></iframe>\n\n",img2, pdf_file);
     }
 
     fprintf (html, "</body>\n");
@@ -660,6 +811,8 @@ void                  Print_Tex               (const struct Node* node, FILE* ou
         return;
     }
 
+    
+
     if (node->type == OP)
     {
         int op = (int)node->val;
@@ -671,6 +824,25 @@ void                  Print_Tex               (const struct Node* node, FILE* ou
             fprintf (out, "}{");
             Print_Tex (node->right, out);
             fprintf (out, "}");
+            return;
+        }
+
+        if (op == POW)
+        {
+            fprintf (out, "{");
+            Print_Tex (node->left, out);
+            fprintf (out, "}^{");
+            Print_Tex (node->right, out);
+            fprintf (out, "}");
+            return;
+        }
+        
+        if (op == SIN || op == COS || op == LN)
+        {
+            const char* name = (op == SIN) ? "\\sin" : (op == COS) ? "\\cos" : "\\ln";
+            fprintf (out, "%s(", name);
+            Print_Tex (node->right, out);
+            fprintf (out, ")");
             return;
         }
 
@@ -711,17 +883,87 @@ void                  Print_Tex               (const struct Node* node, FILE* ou
             }
 
         }
-            if (need_right_brackets)
-            {
-                fprintf (out, "(");
-            }
+
+        if (need_right_brackets)
+        {
+            fprintf (out, "(");
+        }
+    
+        Print_Tex (node->right, out);
+    
+        if (need_right_brackets)
+        {
+            fprintf (out, ")");
+        }
+
         
-            Print_Tex (node->right, out);
-        
-            if (need_right_brackets)
-            {
-                fprintf (out, ")");
-            }
     }
+
+    
 }
 
+void                  Dump_Count_Tree         (FILE* Dump_count, double value_l, double value_r, char* op, double result) // создается массивы каждый раз --- вынести за функции, или чтитать из файла?
+{
+    static const char *imbulki[] = {
+        "очевидно, что…",
+        "легко заметить, что…",
+        "методом пристального взгляда нетрудно понять, что…",
+        "не нужно быть семи пядей во лбу, чтобы увидеть, что…",
+        "любому внимательному читателю сразу ясно, что…",
+        "из соображений здравого смысла очевидно, что…",
+        "достаточно взглянуть на это одним глазом, чтобы убедиться, что…",
+        "невооружённым глазом видно, что…",
+        "как показывает простейший мысленный эксперимент…",
+        "интуитивно совершенно прозрачно, что…",
+        "нетрудно догадаться, что…",
+        "всякий, кто хоть немного знаком с предметом, скажет, что…",
+        "само собой разумеется, что…",
+        "тривиальным образом получаем, что…",
+        "не составляет большого труда убедиться, что…",
+        "из общих соображений немедленно следует, что…",
+        "уже ребёнку понятно, что…",
+        "остаётся лишь кивнуть в сторону очевидного факта, что…",
+        "при некоторой доле внимательности становится ясно, что…",
+        "читатель без труда проверит, что…",
+        "не прибегая к сложным выкладкам, заключаем, что…",
+        "в порядке самоочевидности отметим, что…",
+        "всё это настолько прозрачно, что и доказывать нечего:…",
+        "достаточно перечитать предыдущий абзац, чтобы согласиться, что…",
+        "как и следовало ожидать, элементарная проверка показывает, что…"
+    };
+
+    static const char *link[] = {
+        "Поскольку",
+        "Так как",
+        "Потому что",
+        "Ибо",
+        "В силу того что",
+        "Ввиду того что",
+        "Вследствие чего",
+        "Откуда следует, что",
+        "А значит,",
+        "Следовательно,",
+        "Стало быть,",
+        "Таким образом,",
+        "В связи с чем",
+        "При условии что",
+        "Если учесть, что",
+        "Учитывая, что",
+        "Несмотря на то что",
+        "Хотя",
+        "Тогда как",
+        "Между тем как",
+        "В то время как",
+        "Наряду с тем что",
+        "К тому же",
+        "Более того,",
+        "Сверх того,"
+    };
+
+    int r = rand()% (sizeof(imbulki) / sizeof (imbulki[0])); 
+
+    fprintf (Dump_count, "%s ", link[r]);
+    fprintf (Dump_count, "%s : %lg %s %lg = %lg\n", imbulki[r], value_l, op, value_r, result);
+    
+    
+} 
